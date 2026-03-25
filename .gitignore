@@ -9,10 +9,6 @@ venv/
 __pycache__/
 *.pyc
 
-# Data
-data/
-*.csv
-
 # OS generated files
 .DS_Store
 Thumbs.db
