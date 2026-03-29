@@ -13,13 +13,16 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Agent outputs
+# Agent tools
 agent/
 
-# Instructions
+# Step-by-step instructions
 instructions/
 
 # Docs
 docs/
+
+# .gitignore
+.gitignore
 
 
