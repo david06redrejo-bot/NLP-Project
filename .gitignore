@@ -19,9 +19,6 @@ agent/
 # Step-by-step instructions
 instructions/
 
-# Docs
-docs/
-
 # .gitignore
 .gitignore
 
