@@ -1,4 +1,4 @@
-# Automated ICD Coding NLP Project
+# Automated ICD Coding FNL Project
 
 ![Python Version](https://img.shields.io/badge/python-3.10%2B-blue)
 ![NLP](https://img.shields.io/badge/domain-NLP%20%7C%20Healthcare-green)
@@ -29,8 +29,8 @@ This project explores traditional (non-deep learning) baseline machine learning 
 ## Setup and Installation
 1. Clone the repository.
    ```bash
-   git clone https://github.com/david06redrejo-bot/NLP-Project.git
-   cd NLP-Project
+   git clone https://github.com/user-name/FNL-Project.git
+   cd FNL-Project
    ```
 2. Create and activate a Virtual Environment.
    ```bash
@@ -44,4 +44,5 @@ This project explores traditional (non-deep learning) baseline machine learning 
 4. Place testing datasets (`codification_data.csv`, `icd_d_p_pairs.csv`, etc.) in the `data/` directory.
 
 ## Authors
-Group NLP 2025-26
+Group 10 FNL 2025-26 - 
+Phoebe Iglesias, David Redrejo & Pau Rossell
