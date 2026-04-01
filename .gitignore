@@ -22,4 +22,7 @@ instructions/
 # Data
 data/
 
+# Experiments (private)
+experiments/
+
 
