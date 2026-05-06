@@ -6,12 +6,14 @@ models and to generate the required submission files.
 """
 
 from sklearn.metrics import (
-    accuracy_score, f1_score, precision_score, recall_score,
+    accuracy_score,
+    f1_score,
+    precision_score,
+    recall_score,
     classification_report,
 )
 import pandas as pd
 import matplotlib.pyplot as plt
-import numpy as np
 
 
 def calculate_category_metrics(y_true, y_pred):
@@ -32,8 +34,12 @@ def calculate_category_metrics(y_true, y_pred):
         "accuracy": accuracy_score(y_true, y_pred),
         "weighted_f1": f1_score(y_true, y_pred, average="weighted", zero_division=0),
         "macro_f1": f1_score(y_true, y_pred, average="macro", zero_division=0),
-        "weighted_precision": precision_score(y_true, y_pred, average="weighted", zero_division=0),
-        "weighted_recall": recall_score(y_true, y_pred, average="weighted", zero_division=0),
+        "weighted_precision": precision_score(
+            y_true, y_pred, average="weighted", zero_division=0
+        ),
+        "weighted_recall": recall_score(
+            y_true, y_pred, average="weighted", zero_division=0
+        ),
     }
     return metrics
 
@@ -66,13 +72,13 @@ def plot_comparison(results_dict, save_path=None):
     """
     df = pd.DataFrame(results_dict).T
 
-    plot_cols = [col for col in ["accuracy", "weighted_f1", "macro_f1"] if col in df.columns]
+    plot_cols = [
+        col for col in ["accuracy", "weighted_f1", "macro_f1"] if col in df.columns
+    ]
     if not plot_cols:
         plot_cols = df.columns.tolist()
 
-    df[plot_cols].plot(
-        kind="bar", figsize=(10, 5), title="Model Comparison"
-    )
+    df[plot_cols].plot(kind="bar", figsize=(10, 5), title="Model Comparison")
     plt.ylabel("Score")
     plt.ylim(0.0, 1.0)
     plt.xticks(rotation=15)
@@ -111,11 +117,13 @@ def generate_submission(
     Returns:
         submission_df: The generated DataFrame.
     """
-    submission_df = pd.DataFrame({
-        "id": leaderboard_df[id_col].values,
-        "Literal": leaderboard_df[literal_col].values,
-        "y_category": y_pred_categories,
-    })
+    submission_df = pd.DataFrame(
+        {
+            "id": leaderboard_df[id_col].values,
+            "Literal": leaderboard_df[literal_col].values,
+            "y_category": y_pred_categories,
+        }
+    )
 
     # Ensure no empty predictions — fill with "null" as required
     submission_df["y_category"] = submission_df["y_category"].fillna("null")
