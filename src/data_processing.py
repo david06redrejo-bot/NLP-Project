@@ -2,7 +2,7 @@
 Data Processing Module for Automated ICD Coding
 
 Preprocessing pipeline for Spanish/Catalan clinical text and
-dataset preparation for multi-label classification.
+dataset preparation for ICD category classification.
 """
 
 import re
@@ -10,7 +10,6 @@ import unicodedata
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MultiLabelBinarizer
 
 
 # ── Text Cleaning ─────────────────────────────────────────────────────────────
@@ -98,92 +97,96 @@ def normalize_texts(texts) -> list:
     return [normalize_text(t) for t in texts]
 
 
+# ── Category Extraction ──────────────────────────────────────────────────────
+
+
+def extract_category(code: str) -> str:
+    """
+    Extract the ICD-10 category from a code (its first character, uppercased).
+
+    Examples:
+        'J9809' → 'J'
+        '07CP0ZZ' → '0'
+        'N801' → 'N'
+
+    Args:
+        code: Full ICD-10 code string.
+
+    Returns:
+        Single-character category string.
+    """
+    return str(code)[0].upper()
+
+
 # ── Dataset Preparation ──────────────────────────────────────────────────────
 
 
-def prepare_multilabel_dataset(
+def prepare_category_dataset(
     df: pd.DataFrame,
     literal_col: str = "Literal",
     code_col: str = "Code",
-    min_code_freq: int = 10,
 ):
     """
-    Transform the raw codification CSV into multi-label format.
+    Prepare a single-label dataset for ICD category (first digit) classification.
 
-    Steps:
-        1. Count code frequencies and keep only codes with >= min_code_freq
-        2. Group by literal: each unique literal → list of its codes
-        3. Drop literals that have no remaining codes after filtering
+    For literals that appear with multiple different categories, the most
+    frequent category is kept (majority vote).
 
     Args:
-        df:            DataFrame with at least [literal_col, code_col]
-        literal_col:   Column name for clinical text
-        code_col:      Column name for ICD-10 codes
-        min_code_freq: Minimum number of occurrences for a code to be kept
+        df:           DataFrame with at least [literal_col, code_col].
+        literal_col:  Column name for clinical text.
+        code_col:     Column name for ICD-10 codes.
 
     Returns:
-        X:             list of literal strings
-        y:             list of lists of ICD code strings
-        kept_codes:    sorted list of codes that passed the frequency filter
+        result_df:    DataFrame with columns [Literal, y_category].
     """
-    # Filter to frequent codes
-    code_counts = df[code_col].value_counts()
-    frequent_codes = set(code_counts[code_counts >= min_code_freq].index)
+    # Extract category (first character of each code)
+    df = df.copy()
+    df["y_category"] = df[code_col].apply(extract_category)
 
-    print(f"Total unique codes: {len(code_counts):,}")
-    print(f"Codes with >= {min_code_freq} occurrences: {len(frequent_codes):,}")
+    unique_cats = sorted(df["y_category"].unique())
+    print(f"Total rows: {len(df):,}")
+    print(f"Unique categories: {len(unique_cats)}  →  {unique_cats}")
 
-    # Group by literal
-    grouped = df.groupby(literal_col)[code_col].apply(list).reset_index()
-    grouped.columns = ["Literal", "Codes"]
-
-    # Keep only codes that passed the filter
-    grouped["Codes"] = grouped["Codes"].apply(
-        lambda cs: sorted(set(c for c in cs if c in frequent_codes))
+    # For each literal, take the most frequent category (majority vote)
+    grouped = (
+        df.groupby(literal_col)["y_category"]
+        .agg(lambda x: x.value_counts().index[0])
+        .reset_index()
     )
+    grouped.columns = ["Literal", "y_category"]
 
-    # Drop rows with no remaining codes
-    grouped = grouped[grouped["Codes"].str.len() > 0].reset_index(drop=True)
+    print(f"Unique literals: {len(grouped):,}")
+    print(f"Category distribution:")
+    print(grouped["y_category"].value_counts().sort_index().to_string())
 
-    X = grouped["Literal"].tolist()
-    y = grouped["Codes"].tolist()
-    kept_codes = sorted(frequent_codes)
-
-    print(f"Literals retained: {len(X):,}")
-    print(f"Avg codes per literal: {sum(len(c) for c in y) / len(y):.2f}")
-
-    return X, y, kept_codes
+    return grouped
 
 
-def split_and_binarize(
-    X: list,
-    y: list,
+def split_category_dataset(
+    df: pd.DataFrame,
     test_size: float = 0.2,
     random_state: int = 42,
 ):
     """
-    Split into train/val and binarize labels.
+    Split a category dataset into train / validation.
 
     Args:
-        X:            list of literal strings
-        y:            list of lists of ICD code strings
-        test_size:    fraction for validation set
-        random_state: reproducibility seed
+        df:            DataFrame with [Literal, y_category].
+        test_size:     Fraction for validation set.
+        random_state:  Reproducibility seed.
 
     Returns:
-        X_train, X_val:         string lists
-        y_train_bin, y_val_bin: sparse binary matrices
-        mlb:                    fitted MultiLabelBinarizer
+        X_train, X_val:   lists of literal strings.
+        y_train, y_val:   lists of category strings.
     """
     X_train, X_val, y_train, y_val = train_test_split(
-        X, y, test_size=test_size, random_state=random_state
+        df["Literal"].tolist(),
+        df["y_category"].tolist(),
+        test_size=test_size,
+        random_state=random_state,
+        stratify=df["y_category"],
     )
 
-    mlb = MultiLabelBinarizer()
-    y_train_bin = mlb.fit_transform(y_train)
-    y_val_bin = mlb.transform(y_val)
-
-    print(f"Train: {len(X_train):,} samples | Val: {len(X_val):,} samples")
-    print(f"Label matrix shape: {y_train_bin.shape}")
-
-    return X_train, X_val, y_train_bin, y_val_bin, mlb
+    print(f"Train: {len(X_train):,} | Val: {len(X_val):,}")
+    return X_train, X_val, y_train, y_val

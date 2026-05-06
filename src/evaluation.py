@@ -1,67 +1,46 @@
 """
 Evaluation Module
 
-Contains methods to evaluate the performance of Automated ICD Coding models.
+Contains methods to evaluate the performance of ICD category classification
+models and to generate the required submission files.
 """
 
-from sklearn.metrics import f1_score, precision_score, recall_score
+from sklearn.metrics import (
+    accuracy_score, f1_score, precision_score, recall_score,
+    classification_report,
+)
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
 
-def calculate_metrics(y_true, y_pred, y_pred_prob=None, k_values=[5, 8, 15]):
+def calculate_category_metrics(y_true, y_pred):
     """
-    Calculates primary and secondary evaluation metrics.
+    Calculate evaluation metrics for single-label ICD category classification.
+
+    The official metric is strict accuracy (exact match on the first digit),
+    but we also report weighted and macro F1 for a fuller picture.
 
     Args:
-        y_true: True binary labels (sparse or dense array).
-        y_pred: Predicted binary labels (sparse or dense array).
-        y_pred_prob: Predicted probabilities / decision function for Precision@K calculation (optional).
-        k_values: List of K values for Precision@K.
+        y_true: list/array of true category strings.
+        y_pred: list/array of predicted category strings.
 
     Returns:
-        metrics: Dictionary containing Micro and Macro metrics, plus optionally P@K.
+        metrics: Dictionary of metric name → score.
     """
     metrics = {
-        "micro_f1": f1_score(y_true, y_pred, average="micro"),
-        "macro_f1": f1_score(y_true, y_pred, average="macro"),
-        "micro_precision": precision_score(y_true, y_pred, average="micro"),
-        "micro_recall": recall_score(y_true, y_pred, average="micro"),
+        "accuracy": accuracy_score(y_true, y_pred),
+        "weighted_f1": f1_score(y_true, y_pred, average="weighted", zero_division=0),
+        "macro_f1": f1_score(y_true, y_pred, average="macro", zero_division=0),
+        "weighted_precision": precision_score(y_true, y_pred, average="weighted", zero_division=0),
+        "weighted_recall": recall_score(y_true, y_pred, average="weighted", zero_division=0),
     }
-
-    # Calculate Precision@K if probabilities/decision functions are available
-    if y_pred_prob is not None:
-        for k in k_values:
-            p_at_k = precision_at_k(y_true, y_pred_prob, k)
-            metrics[f"P@{k}"] = p_at_k
-
     return metrics
 
 
-def precision_at_k(y_true, y_prob, k=5):
-    """
-    Computes Precision@K.
-    """
-    # Convert true labels to dense numpy array if sparse
-    if hasattr(y_true, "toarray"):
-        y_true = y_true.toarray()
-    if hasattr(y_prob, "toarray"):
-        y_prob = y_prob.toarray()
-
-    y_true = np.array(y_true)
-    y_prob = np.array(y_prob)
-
-    precisions = []
-    for i in range(y_true.shape[0]):
-        # Get top k indices
-        top_k_indices = np.argsort(y_prob[i])[::-1][:k]
-
-        # Calculate precision: true positives within top k / k
-        tp = np.sum(y_true[i, top_k_indices])
-        precisions.append(tp / k)
-
-    return np.mean(precisions)
+def print_classification_report(y_true, y_pred):
+    """Print sklearn's per-class classification report."""
+    print(classification_report(y_true, y_pred, zero_division=0))
 
 
 def print_comparison_table(results_dict):
@@ -87,14 +66,12 @@ def plot_comparison(results_dict, save_path=None):
     """
     df = pd.DataFrame(results_dict).T
 
-    # We mainly plot Micro-F1 and Macro-F1 unless only one is present
-    plot_cols = [col for col in ["micro_f1", "macro_f1"] if col in df.columns]
-
+    plot_cols = [col for col in ["accuracy", "weighted_f1", "macro_f1"] if col in df.columns]
     if not plot_cols:
         plot_cols = df.columns.tolist()
 
     df[plot_cols].plot(
-        kind="bar", figsize=(10, 5), title="Model Comparison (F1 Scores)"
+        kind="bar", figsize=(10, 5), title="Model Comparison"
     )
     plt.ylabel("Score")
     plt.ylim(0.0, 1.0)
@@ -111,46 +88,45 @@ def plot_comparison(results_dict, save_path=None):
 
 def generate_submission(
     leaderboard_df,
-    y_pred_bin,
-    mlb,
+    y_pred_categories,
     output_path: str,
     id_col: str = "id",
+    literal_col: str = "Literal",
 ):
     """
-    Convert binarised leaderboard predictions into the required submission CSV.
+    Build the required submission CSV for the ICD category challenge.
 
-    The output has one row per (id, Code) pair.
+    Required columns (in order):
+        id         – original id for each row (FIRST COLUMN)
+        Literal    – original literal value
+        y_category – predicted ICD category (first digit); no empty values
 
     Args:
-        leaderboard_df: DataFrame with at least [id_col].
-        y_pred_bin:     Binary prediction matrix (n_samples × n_classes).
-        mlb:            The fitted MultiLabelBinarizer used during training.
-        output_path:    Where to write the CSV.
-        id_col:         Column name for the sample identifier.
+        leaderboard_df:    DataFrame with [id_col, literal_col].
+        y_pred_categories: list/array of predicted category strings (one per row).
+        output_path:       Where to write the CSV.
+        id_col:            Column name for the sample identifier.
+        literal_col:       Column name for the literal text.
 
     Returns:
-        submission_df:  The generated DataFrame.
+        submission_df: The generated DataFrame.
     """
-    ids = leaderboard_df[id_col].values
-    classes = mlb.classes_
+    submission_df = pd.DataFrame({
+        "id": leaderboard_df[id_col].values,
+        "Literal": leaderboard_df[literal_col].values,
+        "y_category": y_pred_categories,
+    })
 
-    if hasattr(y_pred_bin, "toarray"):
-        y_pred_bin = y_pred_bin.toarray()
-    y_pred_bin = np.array(y_pred_bin)
+    # Ensure no empty predictions — fill with "null" as required
+    submission_df["y_category"] = submission_df["y_category"].fillna("null")
+    submission_df["y_category"] = submission_df["y_category"].replace("", "null")
 
-    rows = []
-    for i, sample_id in enumerate(ids):
-        predicted_codes = classes[y_pred_bin[i] == 1]
-        if len(predicted_codes) == 0:
-            # If no code predicted, pick the one with highest decision score
-            # (caller should handle this case upstream, but safe fallback)
-            predicted_codes = ["UNKNOWN"]
-        for code in predicted_codes:
-            rows.append({"id": sample_id, "Code": code})
+    # Ensure id is the first column
+    submission_df = submission_df[["id", "Literal", "y_category"]]
 
-    submission_df = pd.DataFrame(rows)
     submission_df.to_csv(output_path, index=False)
     print(f"Submission saved to: {output_path}")
     print(f"  Total rows: {len(submission_df):,}")
-    print(f"  Unique IDs: {submission_df['id'].nunique():,}")
+    print(f"  Unique categories predicted: {submission_df['y_category'].nunique()}")
+    print(f"  Any empty values: {(submission_df['y_category'] == 'null').sum()}")
     return submission_df
