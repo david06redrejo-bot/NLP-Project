@@ -8,11 +8,13 @@ dataset preparation for multi-label classification.
 import re
 import unicodedata
 import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MultiLabelBinarizer
 
 
 # ── Text Cleaning ─────────────────────────────────────────────────────────────
+
 
 def clean_text(text: str) -> str:
     """
@@ -35,16 +37,53 @@ def clean_text(text: str) -> str:
     text = str(text).lower().strip()
 
     # Remove HTML tags like <font>, </font>, etc.
-    text = re.sub(r'<[^>]+>', ' ', text)
+    text = re.sub(r"<[^>]+>", " ", text)
 
     # Normalize unicode (NFC keeps ñ, accented vowels intact)
-    text = unicodedata.normalize('NFC', text)
+    text = unicodedata.normalize("NFC", text)
 
     # Keep only letters (including Spanish/Catalan), digits, and whitespace
-    text = re.sub(r'[^a-záéíóúüñçà-ú0-9\s]', ' ', text)
+    text = re.sub(r"[^a-záéíóúüñçà-ú0-9\s]", " ", text)
 
     # Collapse whitespace
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
+
+    return text
+
+
+def normalize_text(text: str) -> str:
+    """
+    Normalise a clinical literal following the project proposal pipeline.
+
+    This is the accent-stripping variant used in the TF-IDF + SVM baseline.
+    Steps:
+        1. Lowercase
+        2. Strip HTML tags
+        3. Strip ALL diacritical marks / accents (á→a, ñ→n, etc.)
+        4. Remove non-alphanumeric characters
+        5. Collapse whitespace
+
+    Args:
+        text: raw clinical literal string
+
+    Returns:
+        Fully normalised string with no accents.
+    """
+    text = str(text).lower().strip()
+
+    # Remove HTML tags
+    text = re.sub(r"<[^>]+>", " ", text)
+
+    # NFD decomposition splits base char + combining diacritic
+    text = unicodedata.normalize("NFD", text)
+    # Remove combining diacritical marks (category 'Mn')
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+
+    # Keep only ASCII letters, digits, whitespace
+    text = re.sub(r"[^a-z0-9\s]", " ", text)
+
+    # Collapse whitespace
+    text = re.sub(r"\s+", " ", text).strip()
 
     return text
 
@@ -54,12 +93,18 @@ def clean_texts(texts: list) -> list:
     return [clean_text(t) for t in texts]
 
 
+def normalize_texts(texts) -> list:
+    """Apply normalize_text (accent-stripping) to a list / Series of strings."""
+    return [normalize_text(t) for t in texts]
+
+
 # ── Dataset Preparation ──────────────────────────────────────────────────────
+
 
 def prepare_multilabel_dataset(
     df: pd.DataFrame,
-    literal_col: str = 'Literal',
-    code_col: str = 'Code',
+    literal_col: str = "Literal",
+    code_col: str = "Code",
     min_code_freq: int = 10,
 ):
     """
@@ -90,18 +135,18 @@ def prepare_multilabel_dataset(
 
     # Group by literal
     grouped = df.groupby(literal_col)[code_col].apply(list).reset_index()
-    grouped.columns = ['Literal', 'Codes']
+    grouped.columns = ["Literal", "Codes"]
 
     # Keep only codes that passed the filter
-    grouped['Codes'] = grouped['Codes'].apply(
+    grouped["Codes"] = grouped["Codes"].apply(
         lambda cs: sorted(set(c for c in cs if c in frequent_codes))
     )
 
     # Drop rows with no remaining codes
-    grouped = grouped[grouped['Codes'].str.len() > 0].reset_index(drop=True)
+    grouped = grouped[grouped["Codes"].str.len() > 0].reset_index(drop=True)
 
-    X = grouped['Literal'].tolist()
-    y = grouped['Codes'].tolist()
+    X = grouped["Literal"].tolist()
+    y = grouped["Codes"].tolist()
     kept_codes = sorted(frequent_codes)
 
     print(f"Literals retained: {len(X):,}")

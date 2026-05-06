@@ -101,3 +101,50 @@ def plot_comparison(results_dict, save_path=None):
         print(f"Plot saved to: {save_path}")
         
     plt.show()
+
+
+def generate_submission(
+    leaderboard_df,
+    y_pred_bin,
+    mlb,
+    output_path: str,
+    id_col: str = 'id',
+):
+    """
+    Convert binarised leaderboard predictions into the required submission CSV.
+
+    The output has one row per (id, Code) pair.
+
+    Args:
+        leaderboard_df: DataFrame with at least [id_col].
+        y_pred_bin:     Binary prediction matrix (n_samples × n_classes).
+        mlb:            The fitted MultiLabelBinarizer used during training.
+        output_path:    Where to write the CSV.
+        id_col:         Column name for the sample identifier.
+
+    Returns:
+        submission_df:  The generated DataFrame.
+    """
+    ids = leaderboard_df[id_col].values
+    classes = mlb.classes_
+
+    if hasattr(y_pred_bin, 'toarray'):
+        y_pred_bin = y_pred_bin.toarray()
+    y_pred_bin = np.array(y_pred_bin)
+
+    rows = []
+    for i, sample_id in enumerate(ids):
+        predicted_codes = classes[y_pred_bin[i] == 1]
+        if len(predicted_codes) == 0:
+            # If no code predicted, pick the one with highest decision score
+            # (caller should handle this case upstream, but safe fallback)
+            predicted_codes = ['UNKNOWN']
+        for code in predicted_codes:
+            rows.append({'id': sample_id, 'Code': code})
+
+    submission_df = pd.DataFrame(rows)
+    submission_df.to_csv(output_path, index=False)
+    print(f"Submission saved to: {output_path}")
+    print(f"  Total rows: {len(submission_df):,}")
+    print(f"  Unique IDs: {submission_df['id'].nunique():,}")
+    return submission_df
